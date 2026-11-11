@@ -9,9 +9,9 @@ end
 local autoFarm = false
 local cooldown = 4
 
--- ВАЖНО: Список слов или символов, при нахождении которых предмет НЕ будет продаваться
+-- Список слов или символов-триггеров для сохранения
 local keepItems = {
-    "★", -- Улавливает любые ножи или перчатки со звездой
+    "★", 
     "Navaja Knife", 
     "Kukri Knife", 
     "Paracord Knife"
@@ -35,9 +35,9 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 30)
 Title.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.Text = "🛠 Тест Античита v3 (Снайпер)"
+Title.Text = "🛠 Тест Античита v4 (Фильтр Зон)"
 Title.Font = Enum.Font.SourceSansBold
-Title.TextSize = 16
+Title.TextSize = 15
 Title.BorderSizePixel = 0
 Title.Parent = MainFrame
 
@@ -78,7 +78,7 @@ CooldownBox.FocusLost:Connect(function()
     if num then cooldown = num else CooldownBox.Text = tostring(cooldown) end
 end)
 
--- Функция только для поиска кнопки (без клика)
+-- Функция проверки наличия кнопки на экране
 local function isButtonVisible(exactKeyword)
     local playerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
     for _, guiObj in pairs(playerGui:GetDescendants()) do
@@ -118,16 +118,24 @@ local function clickButtonByText(exactKeyword)
     return false
 end
 
--- Функция сканирования экрана на ценные предметы
+-- ОБНОВЛЕННАЯ ФУНКЦИЯ: Сканирование экрана с учетом координат
 local function checkForValuableItems()
     local playerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+    local camera = workspace.CurrentCamera
+    local screenWidth = camera.ViewportSize.X
+    
     for _, guiObj in pairs(playerGui:GetDescendants()) do
         if guiObj:IsA("TextLabel") and guiObj.Visible then
-            for _, keepWord in ipairs(keepItems) do
-                if guiObj.Text and string.find(guiObj.Text, keepWord) then
-                    return true, guiObj.Text
+            
+            -- ФИЛЬТР ЗОНЫ: Игнорируем левые 25% экрана (где находится меню с ножами)
+            if guiObj.AbsolutePosition.X > (screenWidth * 0.25) then
+                for _, keepWord in ipairs(keepItems) do
+                    if guiObj.Text and string.find(guiObj.Text, keepWord) then
+                        return true, guiObj.Text
+                    end
                 end
             end
+            
         end
     end
     return false, nil
@@ -142,9 +150,8 @@ task.spawn(function()
             if clickedOpen then
                 local uiAppeared = false
                 local timeWaited = 0
-                local timeout = 10 
+                local timeout = 15 -- Увеличил таймаут до 15 секунд
                 
-                -- Ждем, пока на экране появится кнопка продажи (индикатор того, что анимация завершена)
                 while not uiAppeared and timeWaited < timeout do
                     task.wait(0.2)
                     timeWaited = timeWaited + 0.2
@@ -154,22 +161,19 @@ task.spawn(function()
                 end
                 
                 if uiAppeared then
-                    -- Анимация прошла, проверяем, что выпало
+                    -- Проверяем только центр экрана
                     local isValuable, itemName = checkForValuableItems()
                     
                     if isValuable then
                         print("🎉 ВЫПАЛ ЦЕННЫЙ ПРЕДМЕТ: " .. itemName .. ". Продажа отменена!")
-                        -- Мы НЕ нажимаем "Продать всё", скрипт просто пойдет на следующий круг
                     else
-                        -- Обычный предмет, продаем
                         clickButtonByText("ПРОДАТЬ ВСЁ")
                         print("♻️ Обычный предмет продан.")
                     end
                 else
-                    warn("⏳ Время ожидания анимации вышло.")
+                    warn("⏳ ОШИБКА: Кнопка 'ПРОДАТЬ ВСЁ' не появилась за 15 секунд.")
                 end
                 
-                -- Дожидаемся кулдауна перед новой круткой
                 local remainingCooldown = math.max(cooldown - timeWaited, 0)
                 if remainingCooldown > 0 then
                     task.wait(remainingCooldown)
