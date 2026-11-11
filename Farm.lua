@@ -9,6 +9,14 @@ end
 local autoFarm = false
 local cooldown = 4
 
+-- ВАЖНО: Список слов или символов, при нахождении которых предмет НЕ будет продаваться
+local keepItems = {
+    "★", -- Улавливает любые ножи или перчатки со звездой
+    "Navaja Knife", 
+    "Kukri Knife", 
+    "Paracord Knife"
+}
+
 -- Создаем главное окно
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "AntiCheatTestMenu"
@@ -27,7 +35,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 30)
 Title.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.Text = "🛠 Тест Античита v2"
+Title.Text = "🛠 Тест Античита v3 (Снайпер)"
 Title.Font = Enum.Font.SourceSansBold
 Title.TextSize = 16
 Title.BorderSizePixel = 0
@@ -70,16 +78,25 @@ CooldownBox.FocusLost:Connect(function()
     if num then cooldown = num else CooldownBox.Text = tostring(cooldown) end
 end)
 
--- Обновленная функция поиска кнопки
+-- Функция только для поиска кнопки (без клика)
+local function isButtonVisible(exactKeyword)
+    local playerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+    for _, guiObj in pairs(playerGui:GetDescendants()) do
+        if (guiObj:IsA("TextButton") or guiObj:IsA("TextLabel")) and guiObj.Visible then
+            if guiObj.Text and string.find(guiObj.Text, exactKeyword) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- Функция для клика
 local function clickButtonByText(exactKeyword)
     local playerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
-    
     for _, guiObj in pairs(playerGui:GetDescendants()) do
-        if guiObj:IsA("TextButton") or guiObj:IsA("TextLabel") then
+        if (guiObj:IsA("TextButton") or guiObj:IsA("TextLabel")) and guiObj.Visible then
             if guiObj.Text and string.find(guiObj.Text, exactKeyword) then
-                -- Проверяем, не скрыта ли кнопка в данный момент
-                if not guiObj.Visible then continue end
-                
                 local button = guiObj
                 if guiObj:IsA("TextLabel") and guiObj.Parent:IsA("GuiButton") then
                     button = guiObj.Parent
@@ -88,7 +105,6 @@ local function clickButtonByText(exactKeyword)
                 if button:IsA("GuiButton") then
                     if getconnections then
                         for _, connection in pairs(getconnections(button.MouseButton1Click)) do connection:Fire() end
-                        for _, connection in pairs(getconnections(button.MouseButton1Down)) do connection:Fire() end
                         for _, connection in pairs(getconnections(button.Activated)) do connection:Fire() end
                         return true
                     elseif firesignal then
@@ -102,39 +118,58 @@ local function clickButtonByText(exactKeyword)
     return false
 end
 
--- Умный цикл с ожиданием анимации
+-- Функция сканирования экрана на ценные предметы
+local function checkForValuableItems()
+    local playerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+    for _, guiObj in pairs(playerGui:GetDescendants()) do
+        if guiObj:IsA("TextLabel") and guiObj.Visible then
+            for _, keepWord in ipairs(keepItems) do
+                if guiObj.Text and string.find(guiObj.Text, keepWord) then
+                    return true, guiObj.Text
+                end
+            end
+        end
+    end
+    return false, nil
+end
+
+-- Основной цикл
 task.spawn(function()
     while task.wait(0.1) do
         if autoFarm then
-            -- 1. Жмем кнопку открытия
             local clickedOpen = clickButtonByText("ОТКРЫТЬ БЕСПЛАТНО")
             
             if clickedOpen then
-                print("Кейс открывается, ожидание кнопки продажи...")
-                
-                -- 2. Динамическое ожидание кнопки продажи
-                local sold = false
+                local uiAppeared = false
                 local timeWaited = 0
-                local timeout = 10 -- Ждем максимум 10 секунд на анимацию
+                local timeout = 10 
                 
-                -- Цикл будет крутиться, пока кнопка не нажмется ИЛИ не выйдет время
-                while not sold and timeWaited < timeout do
+                -- Ждем, пока на экране появится кнопка продажи (индикатор того, что анимация завершена)
+                while not uiAppeared and timeWaited < timeout do
                     task.wait(0.2)
                     timeWaited = timeWaited + 0.2
+                    if not autoFarm then break end 
                     
-                    if not autoFarm then break end -- Прерываем, если выключили скрипт в меню
-                    
-                    sold = clickButtonByText("ПРОДАТЬ ВСЁ")
+                    uiAppeared = isButtonVisible("ПРОДАТЬ ВСЁ")
                 end
                 
-                if sold then
-                    print("✅ Предмет успешно продан за " .. timeWaited .. " сек.")
+                if uiAppeared then
+                    -- Анимация прошла, проверяем, что выпало
+                    local isValuable, itemName = checkForValuableItems()
+                    
+                    if isValuable then
+                        print("🎉 ВЫПАЛ ЦЕННЫЙ ПРЕДМЕТ: " .. itemName .. ". Продажа отменена!")
+                        -- Мы НЕ нажимаем "Продать всё", скрипт просто пойдет на следующий круг
+                    else
+                        -- Обычный предмет, продаем
+                        clickButtonByText("ПРОДАТЬ ВСЁ")
+                        print("♻️ Обычный предмет продан.")
+                    end
                 else
-                    warn("❌ Кнопка продажи не найдена. Убедитесь, что текст не меняется.")
+                    warn("⏳ Время ожидания анимации вышло.")
                 end
                 
-                -- 3. Высчитываем остаток кулдауна
-                -- Если анимация длилась 3 секунды, а кулдаун 4, ждем еще 1 секунду
+                -- Дожидаемся кулдауна перед новой круткой
                 local remainingCooldown = math.max(cooldown - timeWaited, 0)
                 if remainingCooldown > 0 then
                     task.wait(remainingCooldown)
