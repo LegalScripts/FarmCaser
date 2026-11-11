@@ -27,7 +27,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 30)
 Title.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.Text = "🛠 Тест Античита"
+Title.Text = "🛠 Тест Античита v2"
 Title.Font = Enum.Font.SourceSansBold
 Title.TextSize = 16
 Title.BorderSizePixel = 0
@@ -59,11 +59,9 @@ ToggleBtn.MouseButton1Click:Connect(function()
     if autoFarm then
         ToggleBtn.Text = "Автофарм: ВКЛ"
         ToggleBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
-        print("▶️ Тест запущен")
     else
         ToggleBtn.Text = "Автофарм: ВЫКЛ"
         ToggleBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-        print("⏸ Тест остановлен")
     end
 end)
 
@@ -72,63 +70,76 @@ CooldownBox.FocusLost:Connect(function()
     if num then cooldown = num else CooldownBox.Text = tostring(cooldown) end
 end)
 
--- Обновленная функция поиска
+-- Обновленная функция поиска кнопки
 local function clickButtonByText(exactKeyword)
     local playerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
-    local found = false
     
     for _, guiObj in pairs(playerGui:GetDescendants()) do
         if guiObj:IsA("TextButton") or guiObj:IsA("TextLabel") then
-            -- Проверяем наличие текста напрямую без string.lower, так как кириллица багается
             if guiObj.Text and string.find(guiObj.Text, exactKeyword) then
+                -- Проверяем, не скрыта ли кнопка в данный момент
+                if not guiObj.Visible then continue end
+                
                 local button = guiObj
                 if guiObj:IsA("TextLabel") and guiObj.Parent:IsA("GuiButton") then
                     button = guiObj.Parent
                 end
                 
                 if button:IsA("GuiButton") then
-                    found = true
-                    print("✅ Найдена кнопка: " .. guiObj.Text)
-                    
                     if getconnections then
                         for _, connection in pairs(getconnections(button.MouseButton1Click)) do connection:Fire() end
                         for _, connection in pairs(getconnections(button.MouseButton1Down)) do connection:Fire() end
                         for _, connection in pairs(getconnections(button.Activated)) do connection:Fire() end
-                        print("👆 Сигнал клика отправлен (getconnections)")
                         return true
                     elseif firesignal then
                         firesignal(button.MouseButton1Click)
-                        print("👆 Сигнал клика отправлен (firesignal)")
                         return true
-                    else
-                        warn("❌ ОШИБКА: Ваш инжектор не поддерживает функции эмуляции клика (нет getconnections).")
-                        return false
                     end
                 end
             end
         end
     end
-    
-    if not found then
-        warn("🔍 ОШИБКА: Кнопка с текстом '" .. exactKeyword .. "' не найдена на экране.")
-    end
     return false
 end
 
--- Основной цикл
+-- Умный цикл с ожиданием анимации
 task.spawn(function()
     while task.wait(0.1) do
         if autoFarm then
-            -- Теперь ищем точный текст заглавными буквами
-            clickButtonByText("ОТКРЫТЬ БЕСПЛАТНО")
+            -- 1. Жмем кнопку открытия
+            local clickedOpen = clickButtonByText("ОТКРЫТЬ БЕСПЛАТНО")
             
-            task.wait(1)
-            if not autoFarm then continue end 
-            
-            clickButtonByText("ПРОДАТЬ ВСЁ")
-            
-            local waitTime = math.max(cooldown - 1, 0)
-            task.wait(waitTime)
+            if clickedOpen then
+                print("Кейс открывается, ожидание кнопки продажи...")
+                
+                -- 2. Динамическое ожидание кнопки продажи
+                local sold = false
+                local timeWaited = 0
+                local timeout = 10 -- Ждем максимум 10 секунд на анимацию
+                
+                -- Цикл будет крутиться, пока кнопка не нажмется ИЛИ не выйдет время
+                while not sold and timeWaited < timeout do
+                    task.wait(0.2)
+                    timeWaited = timeWaited + 0.2
+                    
+                    if not autoFarm then break end -- Прерываем, если выключили скрипт в меню
+                    
+                    sold = clickButtonByText("ПРОДАТЬ ВСЁ")
+                end
+                
+                if sold then
+                    print("✅ Предмет успешно продан за " .. timeWaited .. " сек.")
+                else
+                    warn("❌ Кнопка продажи не найдена. Убедитесь, что текст не меняется.")
+                end
+                
+                -- 3. Высчитываем остаток кулдауна
+                -- Если анимация длилась 3 секунды, а кулдаун 4, ждем еще 1 секунду
+                local remainingCooldown = math.max(cooldown - timeWaited, 0)
+                if remainingCooldown > 0 then
+                    task.wait(remainingCooldown)
+                end
+            end
         end
     end
 end)
