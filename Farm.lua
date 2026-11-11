@@ -35,7 +35,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 30)
 Title.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.Text = "🛠 Тест Античита v4 (Фильтр Зон)"
+Title.Text = "🛠 Тест Античита v5 (Точный)"
 Title.Font = Enum.Font.SourceSansBold
 Title.TextSize = 15
 Title.BorderSizePixel = 0
@@ -78,11 +78,27 @@ CooldownBox.FocusLost:Connect(function()
     if num then cooldown = num else CooldownBox.Text = tostring(cooldown) end
 end)
 
+-- Функция: проверяет, действительно ли элемент виден на экране (включая всех родителей)
+local function isTrulyVisible(guiObj)
+    if not guiObj:IsA("GuiObject") or not guiObj.Visible then return false end
+    local parent = guiObj.Parent
+    while parent and parent ~= game do
+        if parent:IsA("GuiObject") and not parent.Visible then
+            return false
+        end
+        if parent:IsA("ScreenGui") and not parent.Enabled then
+            return false
+        end
+        parent = parent.Parent
+    end
+    return true
+end
+
 -- Функция проверки наличия кнопки на экране
 local function isButtonVisible(exactKeyword)
     local playerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
     for _, guiObj in pairs(playerGui:GetDescendants()) do
-        if (guiObj:IsA("TextButton") or guiObj:IsA("TextLabel")) and guiObj.Visible then
+        if (guiObj:IsA("TextButton") or guiObj:IsA("TextLabel")) and isTrulyVisible(guiObj) then
             if guiObj.Text and string.find(guiObj.Text, exactKeyword) then
                 return true
             end
@@ -95,7 +111,7 @@ end
 local function clickButtonByText(exactKeyword)
     local playerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
     for _, guiObj in pairs(playerGui:GetDescendants()) do
-        if (guiObj:IsA("TextButton") or guiObj:IsA("TextLabel")) and guiObj.Visible then
+        if (guiObj:IsA("TextButton") or guiObj:IsA("TextLabel")) and isTrulyVisible(guiObj) then
             if guiObj.Text and string.find(guiObj.Text, exactKeyword) then
                 local button = guiObj
                 if guiObj:IsA("TextLabel") and guiObj.Parent:IsA("GuiButton") then
@@ -105,6 +121,7 @@ local function clickButtonByText(exactKeyword)
                 if button:IsA("GuiButton") then
                     if getconnections then
                         for _, connection in pairs(getconnections(button.MouseButton1Click)) do connection:Fire() end
+                        for _, connection in pairs(getconnections(button.MouseButton1Down)) do connection:Fire() end
                         for _, connection in pairs(getconnections(button.Activated)) do connection:Fire() end
                         return true
                     elseif firesignal then
@@ -118,24 +135,27 @@ local function clickButtonByText(exactKeyword)
     return false
 end
 
--- ОБНОВЛЕННАЯ ФУНКЦИЯ: Сканирование экрана с учетом координат
+-- ТОЧНОЕ СКАНИРОВАНИЕ: только центр экрана (без левой панели и без нижней ленты шансов)
 local function checkForValuableItems()
     local playerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
     local camera = workspace.CurrentCamera
     local screenWidth = camera.ViewportSize.X
+    local screenHeight = camera.ViewportSize.Y
     
     for _, guiObj in pairs(playerGui:GetDescendants()) do
-        if guiObj:IsA("TextLabel") and guiObj.Visible then
+        if guiObj:IsA("TextLabel") and isTrulyVisible(guiObj) then
+            local posX = guiObj.AbsolutePosition.X
+            local posY = guiObj.AbsolutePosition.Y
             
-            -- ФИЛЬТР ЗОНЫ: Игнорируем левые 25% экрана (где находится меню с ножами)
-            if guiObj.AbsolutePosition.X > (screenWidth * 0.25) then
+            -- 1. Отсекаем левые 22% (инвентарь)
+            -- 2. Отсекаем верхние 12% (шапка меню) и нижние 30% (лента возможных призов внизу)
+            if posX > (screenWidth * 0.22) and posY > (screenHeight * 0.12) and posY < (screenHeight * 0.70) then
                 for _, keepWord in ipairs(keepItems) do
                     if guiObj.Text and string.find(guiObj.Text, keepWord) then
                         return true, guiObj.Text
                     end
                 end
             end
-            
         end
     end
     return false, nil
@@ -148,9 +168,12 @@ task.spawn(function()
             local clickedOpen = clickButtonByText("ОТКРЫТЬ БЕСПЛАТНО")
             
             if clickedOpen then
+                -- Даем 1.5 секунды на начало прокрутки (чтобы старая кнопка продажи успела исчезнуть)
+                task.wait(1.5)
+                
                 local uiAppeared = false
-                local timeWaited = 0
-                local timeout = 15 -- Увеличил таймаут до 15 секунд
+                local timeWaited = 1.5
+                local timeout = 15
                 
                 while not uiAppeared and timeWaited < timeout do
                     task.wait(0.2)
@@ -161,23 +184,23 @@ task.spawn(function()
                 end
                 
                 if uiAppeared then
-                    -- Проверяем только центр экрана
+                    -- Небольшая пауза, чтобы текст выпавших предметов успел обновиться
+                    task.wait(0.3)
+                    
                     local isValuable, itemName = checkForValuableItems()
                     
                     if isValuable then
-                        print("🎉 ВЫПАЛ ЦЕННЫЙ ПРЕДМЕТ: " .. itemName .. ". Продажа отменена!")
+                        print("🎉 ВЫПАЛ ЦЕННЫЙ ПРЕДМЕТ В ЦЕНТРЕ: " .. itemName .. ". Продажа отменена!")
                     else
                         clickButtonByText("ПРОДАТЬ ВСЁ")
-                        print("♻️ Обычный предмет продан.")
+                        print("♻️ Обычный дроп продан.")
                     end
                 else
-                    warn("⏳ ОШИБКА: Кнопка 'ПРОДАТЬ ВСЁ' не появилась за 15 секунд.")
+                    warn("⏳ ОШИБКА: Кнопка 'ПРОДАТЬ ВСЁ' не появилась.")
                 end
                 
-                local remainingCooldown = math.max(cooldown - timeWaited, 0)
-                if remainingCooldown > 0 then
-                    task.wait(remainingCooldown)
-                end
+                local remainingCooldown = math.max(cooldown - timeWaited, 0.5)
+                task.wait(remainingCooldown)
             end
         end
     end
